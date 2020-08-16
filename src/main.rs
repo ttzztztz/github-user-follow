@@ -111,7 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if status.as_u16() == 204 {
                     following += 1;
 
-                    println!("{colorA}[  Following You] {colorB}{bold}{somebody} {clearColor}{clearStyle}(https://github.com/{somebody})",
+                    println!("{colorA}[  Following You] {colorB}{bold}{somebody}{clearColor}{clearStyle} (https://github.com/{somebody})",
                              somebody = somebody,
                              colorA = color::Fg(color::Green),
                              colorB = color::Fg(color::Blue),
@@ -120,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                              clearColor = color::Fg(color::Reset)
                     );
                 } else {
-                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody} {clearColor}{clearStyle}(https://github.com/{somebody})",
+                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody}{clearColor}{clearStyle} (https://github.com/{somebody})",
                              somebody = somebody,
                              colorA = color::Fg(color::Red),
                              colorB = color::Fg(color::Blue),
