@@ -1,9 +1,21 @@
 use std::io;
 use reqwest;
-use reqwest::{Request, Method, Url, StatusCode};
+use reqwest::{Request, Method, Url, StatusCode, Client};
 use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::Deserialize;
 use termion::{color, style};
+
+const USE_PROXY: bool = true;
+
+fn create_client() -> Client {
+    if USE_PROXY {
+        return reqwest::Client::builder()
+            .proxy(reqwest::Proxy::http("http://127.0.0.1:1087/").unwrap())
+            .build().unwrap();
+    } else {
+        return reqwest::Client::new();
+    }
+}
 
 #[derive(Deserialize, Clone)]
 struct GithubFollowerInfo {
@@ -11,15 +23,12 @@ struct GithubFollowerInfo {
     id: u64,
 }
 
-async fn check_is_follow(username: String, somebody: String) -> Result<StatusCode, Box<dyn std::error::Error>> {
+async fn check_is_follow(username: String, somebody: String) -> Result<(StatusCode, String), Box<dyn std::error::Error>> {
     let url = format!("https://api.github.com/users/{somebody}/following/{my}",
                       my = username,
                       somebody = somebody);
 
-    let client = reqwest::Client::builder()
-        .proxy(reqwest::Proxy::http("http://127.0.0.1:1087/")?)
-        .build()?;
-
+    let client = create_client();
     let mut request = Request::new(Method::GET, Url::parse(url.as_str()).unwrap());
     request.headers_mut().append(ACCEPT, "application/vnd.github.v3+json".parse().unwrap());
     request.headers_mut().append(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36".parse().unwrap());
@@ -29,7 +38,7 @@ async fn check_is_follow(username: String, somebody: String) -> Result<StatusCod
         .await?
         .status();
 
-    Ok(status)
+    Ok((status, somebody))
 }
 
 #[tokio::main]
@@ -59,10 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                           per_page = 100,
                           page = page);
 
-        let client = reqwest::Client::builder()
-            .proxy(reqwest::Proxy::http("http://127.0.0.1:1087/")?)
-            .build()?;
-
+        let client = create_client();
         let mut request = Request::new(Method::GET, Url::parse(url.as_str()).unwrap());
         request.headers_mut().append(ACCEPT, "application/vnd.github.v3+json".parse().unwrap());
         request.headers_mut().append(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36".parse().unwrap());
@@ -87,34 +93,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("People you are following ({}): \n", total_followers);
     let mut following: usize = 0;
 
+    let mut all_futures = Vec::new();
     for item in followers {
         let somebody = item.login;
-        let follow = check_is_follow(username.clone(), somebody.clone()).await?;
 
-        if follow.as_u16() == 204 {
-            following += 1;
+        let follow_future = check_is_follow(username.clone(), somebody.clone());
+        all_futures.push(follow_future);
+    }
 
-            println!("{colorA}[  Following You] {colorB}{bold}{somebody} {clearColor}{clearStyle}(https://github.com/{somebody})",
-                     somebody = somebody,
-                     colorA = color::Fg(color::Green),
-                     colorB = color::Fg(color::Blue),
-                     bold = style::Bold,
-                     clearStyle = style::Reset,
-                     clearColor = color::Fg(color::Reset)
-            );
-        } else {
-            println!("{colorA}[unFollowing You] {colorB}{bold}{somebody} {clearColor}{clearStyle}(https://github.com/{somebody})",
-                     somebody = somebody,
-                     colorA = color::Fg(color::Red),
-                     colorB = color::Fg(color::Blue),
-                     bold = style::Bold,
-                     clearStyle = style::Reset,
-                     clearColor = color::Fg(color::Reset)
-            );
+    let all_futures = futures::future::join_all(all_futures);
+    let mut error_count: usize = 0;
+    for item in all_futures.await.iter() {
+        match item {
+            Ok(res) => {
+                let (status, somebody) = res;
+
+                if status.as_u16() == 204 {
+                    following += 1;
+
+                    println!("{colorA}[  Following You] {colorB}{bold}{somebody} {clearColor}{clearStyle}(https://github.com/{somebody})",
+                             somebody = somebody,
+                             colorA = color::Fg(color::Green),
+                             colorB = color::Fg(color::Blue),
+                             bold = style::Bold,
+                             clearStyle = style::Reset,
+                             clearColor = color::Fg(color::Reset)
+                    );
+                } else {
+                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody} {clearColor}{clearStyle}(https://github.com/{somebody})",
+                             somebody = somebody,
+                             colorA = color::Fg(color::Red),
+                             colorB = color::Fg(color::Blue),
+                             bold = style::Bold,
+                             clearStyle = style::Reset,
+                             clearColor = color::Fg(color::Reset)
+                    );
+                }
+            },
+            Err(_) => {
+                error_count += 1;
+            }
         }
     }
 
-    println!("\nStatics: {} following you, {} not following you, {}% mutual following rate",
-             following, total_followers - following, 100.0 * (following as f32) / (total_followers as f32));
+    println!("\nStatics: {} following you, {} not following you, {} error, {}% mutual following rate",
+             following, total_followers - error_count - following, error_count, 100.0 * ((following - error_count) as f32) / (total_followers as f32));
     Ok(())
 }
