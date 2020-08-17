@@ -33,10 +33,15 @@ async fn check_is_follow(username: String, somebody: String) -> Result<(StatusCo
     request.headers_mut().append(ACCEPT, "application/vnd.github.v3+json".parse().unwrap());
     request.headers_mut().append(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36".parse().unwrap());
 
-    let status: StatusCode = client
+    let resp = client
         .execute(request)
-        .await?
-        .status();
+        .await?;
+
+    let status: StatusCode = resp.status();
+    if status.as_u16() == 403 {
+        let resp_text = resp.text().await?;
+        println!("{}", resp_text);
+    }
 
     Ok((status, somebody))
 }
@@ -119,15 +124,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                              clearStyle = style::Reset,
                              clearColor = color::Fg(color::Reset)
                     );
-                } else {
-                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody}{clearColor}{clearStyle} (https://github.com/{somebody})",
+                } else if status.as_u16() == 404 {
+                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody}{clearColor}{clearStyle} (https://github.com/{somebody}) [{code}]",
                              somebody = somebody,
                              colorA = color::Fg(color::Red),
                              colorB = color::Fg(color::Blue),
                              bold = style::Bold,
                              clearStyle = style::Reset,
-                             clearColor = color::Fg(color::Reset)
+                             clearColor = color::Fg(color::Reset),
+                             code = status.as_u16()
                     );
+                } else {
+                    error_count += 1;
                 }
             },
             Err(_) => {
@@ -137,6 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nStatics: {} following you, {} not following you, {} error, {}% mutual following rate",
-             following, total_followers - error_count - following, error_count, 100.0 * ((following - error_count) as f32) / (total_followers as f32));
+             following, total_followers - error_count - following, error_count, 100.0 * ((following - error_count) as f32) / ((total_followers - error_count) as f32));
     Ok(())
 }
