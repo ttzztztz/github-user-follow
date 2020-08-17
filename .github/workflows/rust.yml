@@ -19,4 +19,6 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run ttzztztz
+      env:
+        OAUTH: ${{ secrets.OAUTH }}
       run: echo "ttzztztz" >> account.txt && cargo run < account.txt

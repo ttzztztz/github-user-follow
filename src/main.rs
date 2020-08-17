@@ -1,7 +1,7 @@
 use std::io;
 use reqwest;
 use reqwest::{Request, Method, Url, StatusCode, Client};
-use reqwest::header::{ACCEPT, USER_AGENT};
+use reqwest::header::{ACCEPT, USER_AGENT, AUTHORIZATION};
 use serde::Deserialize;
 use termion::{color, style};
 
@@ -23,7 +23,7 @@ struct GithubFollowerInfo {
     id: u64,
 }
 
-async fn check_is_follow(username: String, somebody: String) -> Result<(StatusCode, String), Box<dyn std::error::Error>> {
+async fn check_is_follow(username: String, somebody: String, oauth: String) -> Result<(StatusCode, String), Box<dyn std::error::Error>> {
     let url = format!("https://api.github.com/users/{somebody}/following/{my}",
                       my = username,
                       somebody = somebody);
@@ -32,6 +32,9 @@ async fn check_is_follow(username: String, somebody: String) -> Result<(StatusCo
     let mut request = Request::new(Method::GET, Url::parse(url.as_str()).unwrap());
     request.headers_mut().append(ACCEPT, "application/vnd.github.v3+json".parse().unwrap());
     request.headers_mut().append(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36".parse().unwrap());
+    if !oauth.is_empty() {
+        request.headers_mut().append(AUTHORIZATION, oauth.parse().unwrap());
+    }
 
     let resp = client
         .execute(request)
@@ -49,14 +52,19 @@ async fn check_is_follow(username: String, somebody: String) -> Result<(StatusCo
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut username = String::new();
-    println!("Input Github username:");
-    match io::stdin().read_line(&mut username) {
-        Err(e) => {
-            println!("Error {}", e);
-            return Ok(());
+    let mut oauth = String::new();
+
+    match std::env::var("OAUTH") {
+        Ok(val) => {
+            let encoded_oauth = base64::encode(val);
+            oauth = "Basic ".parse().unwrap();
+            oauth.push_str(encoded_oauth.as_str());
         }
         _ => {}
     }
+
+    println!("Input Github username:");
+    io::stdin().read_line(&mut username).unwrap();
 
     println!("Username: {}", username);
     println!("Connecting to Github Server...");
@@ -77,6 +85,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut request = Request::new(Method::GET, Url::parse(url.as_str()).unwrap());
         request.headers_mut().append(ACCEPT, "application/vnd.github.v3+json".parse().unwrap());
         request.headers_mut().append(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36".parse().unwrap());
+        if !oauth.is_empty() {
+            request.headers_mut().append(AUTHORIZATION, oauth.parse().unwrap());
+        }
 
         current_followers = client
             .execute(request)
@@ -102,7 +113,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for item in followers {
         let somebody = item.login;
 
-        let follow_future = check_is_follow(username.clone(), somebody.clone());
+        let follow_future =
+            check_is_follow(username.clone(),
+                            somebody.clone(),
+                            oauth.clone());
+
         all_futures.push(follow_future);
     }
 
@@ -125,14 +140,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                              clearColor = color::Fg(color::Reset)
                     );
                 } else if status.as_u16() == 404 {
-                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody}{clearColor}{clearStyle} (https://github.com/{somebody}) [{code}]",
+                    println!("{colorA}[unFollowing You] {colorB}{bold}{somebody}{clearColor}{clearStyle} (https://github.com/{somebody})",
                              somebody = somebody,
                              colorA = color::Fg(color::Red),
                              colorB = color::Fg(color::Blue),
                              bold = style::Bold,
                              clearStyle = style::Reset,
-                             clearColor = color::Fg(color::Reset),
-                             code = status.as_u16()
+                             clearColor = color::Fg(color::Reset)
                     );
                 } else {
                     error_count += 1;

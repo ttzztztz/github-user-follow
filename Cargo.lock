@@ -226,6 +226,7 @@ dependencies = [
 name = "github_user_follow"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "futures",
  "reqwest",
  "serde",
