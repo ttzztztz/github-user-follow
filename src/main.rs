@@ -145,6 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nStatics: {} following you, {} not following you, {} error, {}% mutual following rate",
-             following, total_followers - error_count - following, error_count, 100.0 * ((following - error_count) as f32) / ((total_followers - error_count) as f32));
+             following, total_followers - error_count - following, error_count, 100.0 * (following as f32) / ((total_followers - error_count) as f32));
     Ok(())
 }
