@@ -63,8 +63,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
 
-    println!("Input Github username:");
-    io::stdin().read_line(&mut username).unwrap();
+    match std::env::var("USERNAME") {
+        Ok(username_env) => {
+            username = username_env;
+        },
+        _ => {}
+    }
+
+    if username.is_empty() {
+        println!("Input Github username:");
+        io::stdin().read_line(&mut username).unwrap();
+    }
 
     println!("Username: {}", username);
     println!("Connecting to Github Server...");
